@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"syscall"
 )
 
 // Reads and prints the connection's request
@@ -43,22 +44,71 @@ func processConnection(connection net.Conn) {
 }
 
 func main() {
-	// Starting a TCP-server
+	// Listening to a Port
 	listener, err := net.Listen("tcp", ":8080")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer listener.Close()
 	fmt.Println("Opened a TCP listener: ", &listener)
+
+	// Initializing Kqueue (epoll equivalent for MACOS)
+	fd, err := syscall.Kqueue()
+	if err != nil {
+		fmt.Println("Error creating a Kqueue(epoll equivalent) file descriptor")
+		log.Fatal(err)
+	}
+	defer syscall.Close(fd)
+	fmt.Println("Kqueue file descriptor: ", uint64(fd))
+
+	// Retrieve file descriptor for the Network socket
+	file, err := listener.(*net.TCPListener).File()
+	if err != nil {
+		fmt.Println("Error reading file descriptor for the network socket on port: ", listener.Addr().String())
+		log.Fatal(err)
+	}
+	fmt.Println("Network socket file descriptor: ", uint64(file.Fd()))
+
+	// Create an event for Kqueue to monitor on the Network socket
+	event := syscall.Kevent_t{
+		Ident:  uint64(file.Fd()),
+		Filter: syscall.EVFILT_READ,
+		Flags:  syscall.EV_ADD | syscall.EV_ENABLE,
+		Fflags: 0,
+		Data:   0,
+		Udata:  nil,
+	}
+	events := make([]syscall.Kevent_t, 10)
+
+	// An infinite Kqueue poller.
 	for {
-		fmt.Println("Awaiting a new client connection")
-		connection, err := listener.Accept()
+		fmt.Println("Polling KQueue for events")
+		n, err := syscall.Kevent(fd, []syscall.Kevent_t{event}, events, &syscall.Timespec{Nsec: 1000000})
 		if err != nil {
+			if err == syscall.EINTR {
+				//Interrupted system call, keep on going
+				continue
+			}
+			fmt.Println("Error polling Kqueue for events")
 			log.Fatal(err)
 		}
-		fmt.Println("Connection accepted: ", connection)
-		processConnection(connection)
-		connection.Close()
-		fmt.Println("Connection processed and closed: ", connection)
+		fmt.Printf("Received %d events from Kqueue", n)
+
+		if n > 0 {
+			fmt.Printf("Processing %d events returned by Kqueue", n)
+			for i := 0; i < n; i++ {
+				if events[i].Ident == uint64(file.Fd()) {
+					fmt.Println("Awaiting a new client connection")
+					connection, err := listener.Accept()
+					if err != nil {
+						log.Fatal(err)
+					}
+					fmt.Println("Connection accepted: ", connection)
+					processConnection(connection)
+					fmt.Println("Connection processed: ", connection)
+				}
+			}
+			fmt.Printf("Processed %d events returned by Kqueue", n)
+		}
 	}
 }

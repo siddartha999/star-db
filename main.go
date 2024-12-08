@@ -9,13 +9,15 @@ import (
 	"os"
 	"strings"
 	"syscall"
+
+	constants "github.com/siddartha999/star-db/config"
 )
 
-// Reads and prints the connection's request
-func readConnection(connection net.Conn) {
-	logFile, err := os.Open("log.txt")
+// Processes the connection and returns back a response
+func processConnection(connection net.Conn) {
+	logFile, err := os.Open(constants.LogFile)
 	if err != nil {
-		fmt.Println("Error creating log file")
+		fmt.Println("Error opening log file")
 		log.Fatal(err)
 	}
 	defer logFile.Close()
@@ -29,27 +31,25 @@ func readConnection(connection net.Conn) {
 	logFile.WriteString(fmt.Sprintf("Reading %d bytes for the connection: %s\n", bytesRead, connection.RemoteAddr().String()))
 	reader := bufio.NewReader(strings.NewReader(string(buffer)))
 	for {
-		line, err := reader.ReadString('\n')
+		request, err := reader.ReadString('\n')
 		if err != nil {
 			if err != io.EOF {
 				fmt.Println("Error processing the connection's request: ", connection, err)
 			}
 			break
 		}
-		if line == "" {
+		if request == "" {
 			break
 		}
-		fmt.Println(line)
-		logFile.WriteString(line)
+		if len(request) >= 2 && request[len(request)-2] == '\r' {
+			connection.Write([]byte("+OK\r\n"))
+		} else { // Invalid request format
+			connection.Write([]byte("-ERR invalid request format. Request does not end in CRLF.\r\n"))
+		}
+		fmt.Println(request)
+		logFile.WriteString(request)
 	}
 	logFile.WriteString(fmt.Sprintf("Completed reading %d bytes for the connection: %s\n", bytesRead, connection.RemoteAddr().String()))
-}
-
-// Processes the connection and returns back a response
-func processConnection(connection net.Conn) {
-	readConnection(connection)
-	connection.Write([]byte("\r\nHello\r\n"))
-	connection.Write([]byte("Thank you for reaching out\r\n"))
 }
 
 func main() {

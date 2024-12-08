@@ -13,7 +13,7 @@ import (
 
 // Reads and prints the connection's request
 func readConnection(connection net.Conn) {
-	logFile, err := os.Create("log.txt")
+	logFile, err := os.Open("log.txt")
 	if err != nil {
 		fmt.Println("Error creating log file")
 		log.Fatal(err)
@@ -47,7 +47,6 @@ func readConnection(connection net.Conn) {
 
 // Processes the connection and returns back a response
 func processConnection(connection net.Conn) {
-	fmt.Println("Processing connection: ", connection)
 	readConnection(connection)
 	connection.Write([]byte("\r\nHello\r\n"))
 	connection.Write([]byte("Thank you for reaching out\r\n"))
@@ -127,7 +126,7 @@ func main() {
 						fmt.Printf("Unable to extract connection's %s file descriptor", connection.RemoteAddr().String())
 						continue
 					}
-					// Create a new read event for the connection
+					// Create a new read event for the connection. The connection's Receiver queue is to be monitored.
 					connectionEvent := syscall.Kevent_t{
 						Ident:  uint64(connectionFile.Fd()),
 						Filter: syscall.EVFILT_READ,

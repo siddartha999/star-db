@@ -15,7 +15,7 @@ import (
 
 // Processes the connection and returns back a response
 func processConnection(connection net.Conn) {
-	logFile, err := os.Open(constants.LogFile)
+	logFile, err := os.OpenFile(constants.LogFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		fmt.Println("Error opening log file")
 		log.Fatal(err)
@@ -130,7 +130,7 @@ func main() {
 					connectionEvent := syscall.Kevent_t{
 						Ident:  uint64(connectionFile.Fd()),
 						Filter: syscall.EVFILT_READ,
-						Flags:  syscall.EV_ADD | syscall.EV_ENABLE,
+						Flags:  syscall.EV_ADD | syscall.EV_ENABLE | syscall.EV_CLEAR,
 					}
 					// Register the event with the kqueue. kqueue will notify the main thread when data from the connection is available.
 					_, err = syscall.Kevent(kQueueFD, []syscall.Kevent_t{connectionEvent}, nil, nil)
